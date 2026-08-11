@@ -1,14 +1,25 @@
 services:
+
   backend:
-    build: ./backend
+    build:
+      context: ./backend
     container_name: printcheck-backend
-    ports:
-      - "8000:8000"
+
+    expose:
+      - "8000"
+
+    restart: unless-stopped
+
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
     container_name: printcheck-frontend
+
     ports:
-      - "5173:80"
+      - "80:80"
+
     depends_on:
       - backend
+
+    restart: unless-stopped
