@@ -501,3 +501,83 @@ footer {
     flex-direction: column;
   }
 }
+
+
+.dieline-settings {
+  margin: 18px 0;
+  padding: 15px;
+  border: 1px solid #e4e8f0;
+  border-radius: 13px;
+  background: #fafbff;
+}
+
+.dieline-settings h3 {
+  margin: 0 0 7px;
+  font-size: 14px;
+}
+
+.dieline-settings p,
+.dieline-note {
+  color: #727d89;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.dieline-settings p {
+  margin: 0 0 12px;
+}
+
+.dieline-settings .settings-grid {
+  margin-bottom: 0;
+}
+
+.path-list {
+  display: grid;
+  gap: 7px;
+}
+
+.path-row,
+.page-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 9px;
+  padding: 11px 12px;
+  border: 1px solid #edf0f2;
+  border-radius: 10px;
+  font-size: 12px;
+}
+
+.path-row > div {
+  display: grid;
+  gap: 4px;
+}
+
+.path-row small {
+  color: #89929c;
+}
+
+.path-row > span:last-child,
+.page-summary span {
+  color: #68727d;
+}
+
+.path-confirmed {
+  color: #16834a;
+  font-weight: 700;
+}
+
+.path-suspected {
+  color: #a76b00;
+  font-weight: 700;
+}
+
+.page-summary {
+  justify-content: flex-start;
+  margin-bottom: 7px;
+}
+
+.page-summary strong {
+  min-width: 70px;
+}

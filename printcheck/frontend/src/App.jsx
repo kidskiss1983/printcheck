@@ -26,12 +26,35 @@ function Overall({ status }) {
   );
 }
 
+
+
+function DielineOverall({ status }) {
+  const map = {
+    pass: ["pass", "幾何檢查通過（仍需人工確認）"],
+    warning: ["warning", "有項目需要確認"],
+    fail: ["fail", "發現幾何異常"]
+  };
+  const [cls, text] = map[status] || map.warning;
+  return (
+    <div className={`overall ${cls}`}>
+      <div className="overall-mark">{status === "pass" ? "✓" : "!"}</div>
+      <div>
+        <div className="overall-label">刀模幾何檢查結果</div>
+        <div className="overall-title">{text}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const inputRef = useRef(null);
   const [file, setFile] = useState(null);
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+  const [dielineResult, setDielineResult] = useState(null);
+  const [dielineSettings, setDielineSettings] = useState({ minGap: 2, edgeClearance: 3, minSegment: 0.5, cutColor: "" });
+  const isPdf = file?.name?.toLowerCase().endsWith(".pdf") || false;
   const [error, setError] = useState("");
 
   const [settings, setSettings] = useState({
@@ -45,6 +68,7 @@ export default function App() {
     if (!selected) return;
     setFile(selected);
     setResult(null);
+    setDielineResult(null);
     setError("");
   }
 
@@ -56,23 +80,32 @@ export default function App() {
 
   async function analyze() {
     if (!file) {
-      setError("請先選擇圖片檔案。");
+      setError("請先選擇檔案。");
       return;
     }
 
     setLoading(true);
     setError("");
     setResult(null);
+    setDielineResult(null);
 
     const body = new FormData();
     body.append("file", file);
-    body.append("target_width_mm", settings.width);
-    body.append("target_height_mm", settings.height);
-    body.append("bleed_mm", settings.bleed);
-    body.append("min_dpi", settings.dpi);
+    const endpoint = isPdf ? "/api/analyze-dieline" : "/api/analyze";
+    if (isPdf) {
+      body.append("min_gap_mm", dielineSettings.minGap);
+      body.append("edge_clearance_mm", dielineSettings.edgeClearance);
+      body.append("min_segment_mm", dielineSettings.minSegment);
+      body.append("cut_color", dielineSettings.cutColor);
+    } else {
+      body.append("target_width_mm", settings.width);
+      body.append("target_height_mm", settings.height);
+      body.append("bleed_mm", settings.bleed);
+      body.append("min_dpi", settings.dpi);
+    }
 
     try {
-      const response = await fetch(`${API_BASE}/api/analyze`, {
+      const response = await fetch(`${API_BASE}${endpoint}`, {
         method: "POST",
         body
       });
@@ -83,7 +116,8 @@ export default function App() {
         throw new Error(data.detail || "分析失敗");
       }
 
-      setResult(data);
+      if (isPdf) setDielineResult(data);
+      else setResult(data);
     } catch (err) {
       setError(err.message || "無法連線到後端服務。");
     } finally {
@@ -93,6 +127,10 @@ export default function App() {
 
   function updateSetting(key, value) {
     setSettings(prev => ({ ...prev, [key]: Number(value) }));
+  }
+
+  function updateDielineSetting(key, value) {
+    setDielineSettings(prev => ({ ...prev, [key]: key === "cutColor" ? value : Number(value) }));
   }
 
   const colorClass = result?.color_space === "CMYK" ? "good" : "attention";
@@ -116,8 +154,8 @@ export default function App() {
             <p className="eyebrow">PREPRESS CHECK</p>
             <h1>送印前，先把檔案檢查一次。</h1>
             <p className="subtitle">
-              分析畫素、DPI、RGB / CMYK、ICC Profile 與指定成品尺寸，
-              快速找出可能造成印刷問題的地方。
+              分析圖片畫素、DPI、RGB / CMYK、ICC Profile，並初步檢查 PDF 貼紙刀模向量路徑，
+              協助找出可能造成印刷問題的地方。
             </p>
           </div>
         </section>
@@ -142,17 +180,17 @@ export default function App() {
               <input
                 ref={inputRef}
                 type="file"
-                accept=".jpg,.jpeg,.png,.tif,.tiff,.webp"
+                accept=".jpg,.jpeg,.png,.tif,.tiff,.webp,.pdf"
                 hidden
                 onChange={(e) => chooseFile(e.target.files?.[0])}
               />
               <div className="upload-icon">↑</div>
-              <strong>{file ? file.name : "拖曳圖片到這裡"}</strong>
+              <strong>{file ? file.name : "拖曳檔案到這裡"}</strong>
               <span>{file ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : "或點擊選擇檔案"}</span>
-              <small>JPG / PNG / TIFF / WEBP，最大 50 MB</small>
+              <small>圖片：JPG / PNG / TIFF / WEBP；刀模：PDF，最大 50 MB</small>
             </div>
 
-            <div className="settings-grid">
+            {!isPdf && <div className="settings-grid">
               <label>
                 <span>成品寬度 mm</span>
                 <input type="number" value={settings.width} onChange={e => updateSetting("width", e.target.value)} />
@@ -169,7 +207,20 @@ export default function App() {
                 <span>最低 DPI</span>
                 <input type="number" value={settings.dpi} onChange={e => updateSetting("dpi", e.target.value)} />
               </label>
-            </div>
+            </div>}
+
+            {isPdf && (
+              <div className="dieline-settings">
+                <h3>貼紙刀模檢查設定</h3>
+                <p>圖層名稱含 CutContour、Dieline、Die Cut 等關鍵字，或符合自訂顏色的路徑，會列為已確認；其他向量路徑列為疑似。</p>
+                <div className="settings-grid">
+                  <label><span>刀模最小間距 mm</span><input type="number" min="0.1" step="0.1" value={dielineSettings.minGap} onChange={e => updateDielineSetting("minGap", e.target.value)} /></label>
+                  <label><span>距頁面邊界 mm</span><input type="number" min="0" step="0.1" value={dielineSettings.edgeClearance} onChange={e => updateDielineSetting("edgeClearance", e.target.value)} /></label>
+                  <label><span>最短線段警示 mm</span><input type="number" min="0.1" step="0.1" value={dielineSettings.minSegment} onChange={e => updateDielineSetting("minSegment", e.target.value)} /></label>
+                  <label><span>自訂刀模顏色（選填）</span><input type="text" placeholder="#FF00FF" value={dielineSettings.cutColor} onChange={e => updateDielineSetting("cutColor", e.target.value)} /></label>
+                </div>
+              </div>
+            )}
 
             <button className="analyze-button" onClick={analyze} disabled={loading || !file}>
               {loading ? "分析中…" : "開始檢查檔案 →"}
@@ -184,7 +235,7 @@ export default function App() {
               <span>STEP 2</span>
             </div>
 
-            {!result && !loading && (
+            {!result && !dielineResult && !loading && (
               <div className="empty">
                 <div className="empty-symbol">◎</div>
                 <h3>等待檔案分析</h3>
@@ -196,7 +247,52 @@ export default function App() {
               <div className="empty">
                 <div className="spinner"></div>
                 <h3>正在分析檔案…</h3>
-                <p>正在讀取圖片 metadata 與印刷解析度。</p>
+                <p>{isPdf ? "正在讀取 PDF 向量路徑與幾何資訊。" : "正在讀取圖片 metadata 與印刷解析度。"}</p>
+              </div>
+            )}
+
+            {dielineResult && (
+              <div className="result">
+                <DielineOverall status={dielineResult.overall} />
+                <div className="metrics">
+                  <div className="metric"><span>PDF 頁數</span><strong>{dielineResult.page_count}</strong></div>
+                  <div className="metric"><span>向量路徑</span><strong>{dielineResult.vector_path_count}</strong></div>
+                  <div className="metric"><span>已確認刀模</span><strong className="good">{dielineResult.confirmed_dielines}</strong></div>
+                  <div className="metric"><span>疑似刀模</span><strong className="attention">{dielineResult.suspected_dielines}</strong></div>
+                </div>
+                <div className="dieline-note">{dielineResult.classification_note}</div>
+                <h3 className="checks-title">刀模異常檢查</h3>
+                {dielineResult.findings.length === 0 ? (
+                  <div className="check"><StatusIcon status="pass" /><div><strong>未發現設定範圍內的幾何異常</strong><p>仍請人工確認刀模路徑是否符合實際加工需求。</p></div></div>
+                ) : (
+                  <div className="checks">
+                    {dielineResult.findings.map((finding, index) => (
+                      <div className="check" key={`${finding.code}-${index}`}>
+                        <StatusIcon status={finding.severity === "fail" ? "fail" : "warning"} />
+                        <div><strong>{finding.code} · 第 {finding.page} 頁</strong><p>{finding.message}</p></div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <h3 className="checks-title">向量路徑清單</h3>
+                <div className="path-list">
+                  {dielineResult.paths.map(path => (
+                    <div className="path-row" key={`${path.page}-${path.path_index}`}>
+                      <div><strong>第 {path.page} 頁 · 路徑 {path.path_index}</strong><small>{path.layer || "未命名圖層"} · {path.color || "未提供線條顏色"}</small></div>
+                      <span className={path.classification === "confirmed" ? "path-confirmed" : "path-suspected"}>{path.classification === "confirmed" ? "已確認" : "疑似"}</span>
+                      <span>{path.closed ? "封閉" : "開放"} · {path.length_mm} mm</span>
+                    </div>
+                  ))}
+                  {dielineResult.paths.length === 0 && <p className="dieline-note">未擷取到可分析的向量路徑。若刀模已被點陣化，請提供含向量刀模的 PDF。</p>}
+                </div>
+                <h3 className="checks-title">各頁面摘要</h3>
+                {dielineResult.pages.map(page => (
+                  <div className="page-summary" key={page.page}>
+                    <strong>第 {page.page} 頁</strong>
+                    <span>{page.width_mm} × {page.height_mm} mm</span>
+                    <span>{page.vector_path_count} 條向量路徑</span>
+                  </div>
+                ))}
               </div>
             )}
 
@@ -277,7 +373,7 @@ export default function App() {
         </section>
 
         <footer>
-          PrintCheck v1.0 · 基礎圖片印前預檢工具
+          PrintCheck v1.1 · 圖片印前預檢與 PDF 刀模初步檢查
         </footer>
       </main>
     </div>

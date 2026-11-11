@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .analyzer import MAX_FILE_SIZE, analyze_image
+from .dieline_analyzer import analyze_pdf_dielines
 
 
 app = FastAPI(
@@ -176,3 +177,44 @@ async def analyze(
             status_code=500,
             detail="分析檔案時發生未預期錯誤，請稍後再試。",
         ) from exc
+
+
+# ---------------------------------------------------------
+# PDF 向量刀模檢查
+# ---------------------------------------------------------
+
+
+@app.post("/api/analyze-dieline")
+async def analyze_dieline(
+    file: UploadFile = File(...),
+    min_gap_mm: float = Form(2.0),
+    edge_clearance_mm: float = Form(3.0),
+    min_segment_mm: float = Form(0.5),
+    cut_color: str = Form(""),
+):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="沒有檔案名稱。")
+    if not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="刀模向量檢查目前僅支援 PDF。")
+    try:
+        raw = await file.read(MAX_FILE_SIZE + 1)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="無法讀取上傳檔案。") from exc
+    if not raw:
+        raise HTTPException(status_code=400, detail="上傳的檔案是空的。")
+    if len(raw) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="檔案超過 50 MB 上限。")
+    try:
+        result = analyze_pdf_dielines(
+            raw=raw,
+            filename=file.filename,
+            min_gap_mm=min_gap_mm,
+            edge_clearance_mm=edge_clearance_mm,
+            min_segment_mm=min_segment_mm,
+            cut_color=cut_color or None,
+        )
+        return JSONResponse(content=result, status_code=200)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail="PDF 刀模分析發生錯誤，請確認檔案內容後再試。") from exc
