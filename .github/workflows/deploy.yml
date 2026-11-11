@@ -6,7 +6,7 @@ on:
     branches:
       - main
     paths:
-      - "printcheck/frontend/**"
+      - "frontend/**"
       - ".github/workflows/deploy.yml"
   workflow_dispatch:
 
@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: printcheck/frontend
+        working-directory: frontend
 
     steps:
       - name: Checkout
@@ -44,7 +44,7 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: printcheck/frontend/dist
+          path: frontend/dist
 
   deploy:
     environment:
