@@ -130,8 +130,8 @@ def analyze_pdf_dielines(
         doc.close()
         raise ValueError("自訂刀模顏色請使用 #RRGGBB 格式。")
 
-    for page_index, page in enumerate(doc):
-                # 產生 PDF 頁面預覽圖
+       for page_index, page in enumerate(doc):
+        # 產生 PDF 頁面預覽圖
         pix = page.get_pixmap(
             matrix=fitz.Matrix(1, 1),
             alpha=False
@@ -146,6 +146,7 @@ def analyze_pdf_dielines(
             "width": pix.width,
             "height": pix.height
         })
+
         page_rect = page.rect
         drawings = page.get_drawings()
         page_shapes = []
@@ -272,6 +273,7 @@ def analyze_pdf_dielines(
         "classification_note": "目前以圖層名稱或使用者指定顏色作為確認依據；PDF 專色名稱需視檔案內部結構而定，未能可靠讀取者不會自動判定為已確認。",
         "settings": {"min_gap_mm": min_gap_mm, "edge_clearance_mm": edge_clearance_mm, "min_segment_mm": min_segment_mm, "cut_color": configured_color},
         "pages": page_results,
+        "previews": previews,
         "paths": all_shapes,
         "findings": findings,
         "summary": {"fail": fail_count, "warning": warning_count},
