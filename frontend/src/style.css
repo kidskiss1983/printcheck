@@ -113,13 +113,33 @@ h1 {
 }
 
 .workspace {
-  display: grid;
-  grid-template-columns: .88fr 1.12fr;
+  display: flex;
+  flex-direction: column;
   gap: 22px;
-  align-items: start;
 }
-.workspace > .result-panel {
+
+.workspace > .settings-panel {
+  display: contents;
+}
+
+.image-inspection-section {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.image-result-panel {
   grid-column: 2;
+  grid-row: 1;
+}
+
+.dieline-inspection-section {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.dieline-result-panel {
+  grid-column: 2;
+  grid-row: 2;
 }
 .panel {
   background: white;
