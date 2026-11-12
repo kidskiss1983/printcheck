@@ -113,15 +113,19 @@ h1 {
 }
 
 .workspace {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: .88fr 1.12fr;
   gap: 22px;
+  align-items: start;
 }
 
 .workspace > .settings-panel {
   display: contents;
 }
 
+.settings-panel > .panel-title {
+  display: none;
+}
 .image-inspection-section {
   grid-column: 1;
   grid-row: 1;
@@ -492,6 +496,26 @@ footer {
 @media (max-width: 900px) {
   .workspace {
     grid-template-columns: 1fr;
+  }
+
+  .image-inspection-section {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .image-result-panel {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .dieline-inspection-section {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
+  .dieline-result-panel {
+    grid-column: 1;
+    grid-row: 4;
   }
 }
 
