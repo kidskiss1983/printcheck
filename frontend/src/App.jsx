@@ -229,7 +229,7 @@ function onDielineDrop(e) {
 
            
 {/* 第一區：圖片印刷檢查 */}
-<div className="inspection-section">
+<div className="inspection-section image-inspection-section">
   <h2>圖片印刷檢查</h2>
   <p>檢查圖片尺寸、色彩模式、DPI 與出血設定。</p>
 
@@ -310,7 +310,7 @@ function onDielineDrop(e) {
 </div>
 
 {/* 第二區：PDF 刀模檢查 */}
-<div className="inspection-section">
+<div className="inspection-section dieline-inspection-section">
   <h2>PDF 刀模檢查</h2>
   <p>檢查 PDF 向量刀模路徑、間距與幾何異常。</p>
 
@@ -425,7 +425,7 @@ function onDielineDrop(e) {
 
           </div>
 
- <div className="panel result-panel">
+<div className="panel result-panel dieline-result-panel">
   <div className="panel-title">
     <h2>PDF 刀模檢查結果</h2>
     <span>刀模分析</span>
@@ -475,7 +475,7 @@ function onDielineDrop(e) {
               </div>
             )}
           </div>
-<div className="panel result-panel">
+<div className="panel result-panel image-result-panel">
           <div className="panel-title">
             <h2>圖片印刷檢查結果</h2>
             <span>圖片分析</span>
