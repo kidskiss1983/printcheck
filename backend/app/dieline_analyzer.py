@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+import base64
 import math
 import re
 from collections import Counter
@@ -122,6 +122,7 @@ def analyze_pdf_dielines(
     pt_to_mm = 25.4 / 72
     findings = []
     page_results = []
+    previews = []
     all_shapes = []
     total_paths = 0
     configured_color = cut_color.strip().upper() if cut_color else None
@@ -130,6 +131,21 @@ def analyze_pdf_dielines(
         raise ValueError("自訂刀模顏色請使用 #RRGGBB 格式。")
 
     for page_index, page in enumerate(doc):
+                # 產生 PDF 頁面預覽圖
+        pix = page.get_pixmap(
+            matrix=fitz.Matrix(1, 1),
+            alpha=False
+        )
+        preview_data = base64.b64encode(
+            pix.tobytes("png")
+        ).decode("utf-8")
+
+        previews.append({
+            "page": page_index + 1,
+            "image": f"data:image/png;base64,{preview_data}",
+            "width": pix.width,
+            "height": pix.height
+        })
         page_rect = page.rect
         drawings = page.get_drawings()
         page_shapes = []
