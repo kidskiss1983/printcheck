@@ -62,6 +62,7 @@ const [dielineLoading, setDielineLoading] = useState(false);
 const [dielineError, setDielineError] = useState("");
 const [result, setResult] = useState(null);
   const [dielineResult, setDielineResult] = useState(null);
+  const [previewPage, setPreviewPage] = useState(1);
   const [dielineSettings, setDielineSettings] = useState({ minGap: 2, edgeClearance: 3, minSegment: 0.5, cutColor: "" });
 
 
@@ -440,6 +441,40 @@ function onDielineDrop(e) {
                   <div className="metric"><span>疑似刀模</span><strong className="attention">{dielineResult.suspected_dielines}</strong></div>
                 </div>
                 <div className="dieline-note">{dielineResult.classification_note}</div>
+                                {dielineResult.previews?.length > 0 && (
+                  <div className="pdf-preview">
+                    <h3 className="checks-title">PDF 預覽與異常位置</h3>
+
+                    <div className="pdf-preview-toolbar">
+                      <button
+                        type="button"
+                        disabled={previewPage <= 1}
+                        onClick={() => setPreviewPage(p => p - 1)}
+                      >
+                        上一頁
+                      </button>
+
+                      <span>
+                        第 {previewPage} 頁 / 共 {dielineResult.previews.length} 頁
+                      </span>
+
+                      <button
+                        type="button"
+                        disabled={previewPage >= dielineResult.previews.length}
+                        onClick={() => setPreviewPage(p => p + 1)}
+                      >
+                        下一頁
+                      </button>
+                    </div>
+
+                    <div className="pdf-preview-image">
+                      <img
+                        src={dielineResult.previews[previewPage - 1]?.image}
+                        alt={`PDF 第 ${previewPage} 頁預覽`}
+                      />
+                    </div>
+                  </div>
+                )}
                 <h3 className="checks-title">刀模異常檢查</h3>
                 {dielineResult.findings.length === 0 ? (
                   <div className="check"><StatusIcon status="pass" /><div><strong>未發現設定範圍內的幾何異常</strong><p>仍請人工確認刀模路徑是否符合實際加工需求。</p></div></div>
