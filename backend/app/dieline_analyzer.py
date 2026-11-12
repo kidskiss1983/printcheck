@@ -130,7 +130,7 @@ def analyze_pdf_dielines(
         doc.close()
         raise ValueError("自訂刀模顏色請使用 #RRGGBB 格式。")
 
-       for page_index, page in enumerate(doc):
+    for page_index, page in enumerate(doc):
         # 產生 PDF 頁面預覽圖
         pix = page.get_pixmap(
             matrix=fitz.Matrix(1, 1),
