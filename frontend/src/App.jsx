@@ -47,15 +47,23 @@ function DielineOverall({ status }) {
 }
 
 export default function App() {
-  const inputRef = useRef(null);
-  const [file, setFile] = useState(null);
-  const [dragging, setDragging] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null);
+  // 圖片印刷檢查：獨立狀態
+const imageInputRef = useRef(null);
+const [imageFile, setImageFile] = useState(null);
+const [imageDragging, setImageDragging] = useState(false);
+const [imageLoading, setImageLoading] = useState(false);
+const [imageError, setImageError] = useState("");
+
+// 刀模檢查：獨立狀態
+const dielineInputRef = useRef(null);
+const [dielineFile, setDielineFile] = useState(null);
+const [dielineDragging, setDielineDragging] = useState(false);
+const [dielineLoading, setDielineLoading] = useState(false);
+const [dielineError, setDielineError] = useState("");
+const [result, setResult] = useState(null);
   const [dielineResult, setDielineResult] = useState(null);
   const [dielineSettings, setDielineSettings] = useState({ minGap: 2, edgeClearance: 3, minSegment: 0.5, cutColor: "" });
-  const isPdf = file?.name?.toLowerCase().endsWith(".pdf") || false;
-  const [error, setError] = useState("");
+
 
   const [settings, setSettings] = useState({
     width: 210,
@@ -64,48 +72,63 @@ export default function App() {
     dpi: 300
   });
 
-  function chooseFile(selected) {
-    if (!selected) return;
-    setFile(selected);
-    setResult(null);
-    setDielineResult(null);
-    setError("");
+   
+// 圖片印刷檢查：選取檔案
+function chooseImageFile(selected) {
+  if (!selected) return;
+  setImageFile(selected);
+  setResult(null);
+  setImageError("");
+}
+
+// 刀模檢查：選取 PDF
+function chooseDielineFile(selected) {
+  if (!selected) return;
+
+  if (!selected.name.toLowerCase().endsWith(".pdf")) {
+    setDielineError("目前刀模向量檢查只接受 PDF 檔案。");
+    return;
   }
 
-  function onDrop(e) {
-    e.preventDefault();
-    setDragging(false);
-    chooseFile(e.dataTransfer.files?.[0]);
-  }
+  setDielineFile(selected);
+  setDielineResult(null);
+  setDielineError("");
+}
 
-  async function analyze() {
-    if (!file) {
-      setError("請先選擇檔案。");
+// 圖片區域拖曳上傳
+function onImageDrop(e) {
+  e.preventDefault();
+  setImageDragging(false);
+  chooseImageFile(e.dataTransfer.files?.[0]);
+}
+
+// 刀模區域拖曳上傳
+function onDielineDrop(e) {
+  e.preventDefault();
+  setDielineDragging(false);
+  chooseDielineFile(e.dataTransfer.files?.[0]);
+}
+
+  // 圖片印刷檢查
+  async function analyzeImage() {
+    if (!imageFile) {
+      setImageError("請先選擇圖片檔案。");
       return;
     }
 
-    setLoading(true);
-    setError("");
+    setImageLoading(true);
+    setImageError("");
     setResult(null);
-    setDielineResult(null);
 
     const body = new FormData();
-    body.append("file", file);
-    const endpoint = isPdf ? "/api/analyze-dieline" : "/api/analyze";
-    if (isPdf) {
-      body.append("min_gap_mm", dielineSettings.minGap);
-      body.append("edge_clearance_mm", dielineSettings.edgeClearance);
-      body.append("min_segment_mm", dielineSettings.minSegment);
-      body.append("cut_color", dielineSettings.cutColor);
-    } else {
-      body.append("target_width_mm", settings.width);
-      body.append("target_height_mm", settings.height);
-      body.append("bleed_mm", settings.bleed);
-      body.append("min_dpi", settings.dpi);
-    }
+    body.append("file", imageFile);
+    body.append("target_width_mm", settings.width);
+    body.append("target_height_mm", settings.height);
+    body.append("bleed_mm", settings.bleed);
+    body.append("min_dpi", settings.dpi);
 
     try {
-      const response = await fetch(`${API_BASE}${endpoint}`, {
+      const response = await fetch(`${API_BASE}/api/analyze`, {
         method: "POST",
         body
       });
@@ -113,15 +136,52 @@ export default function App() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.detail || "分析失敗");
+        throw new Error(data.detail || "圖片分析失敗");
       }
 
-      if (isPdf) setDielineResult(data);
-      else setResult(data);
+      setResult(data);
     } catch (err) {
-      setError(err.message || "無法連線到後端服務。");
+      setImageError(err.message || "無法連線到後端服務。");
     } finally {
-      setLoading(false);
+      setImageLoading(false);
+    }
+  }
+
+  // PDF 刀模檢查
+  async function analyzeDieline() {
+    if (!dielineFile) {
+      setDielineError("請先選擇 PDF 檔案。");
+      return;
+    }
+
+    setDielineLoading(true);
+    setDielineError("");
+    setDielineResult(null);
+
+    const body = new FormData();
+    body.append("file", dielineFile);
+    body.append("min_gap_mm", dielineSettings.minGap);
+    body.append("edge_clearance_mm", dielineSettings.edgeClearance);
+    body.append("min_segment_mm", dielineSettings.minSegment);
+    body.append("cut_color", dielineSettings.cutColor);
+
+    try {
+      const response = await fetch(`${API_BASE}/api/analyze-dieline`, {
+        method: "POST",
+        body
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "刀模分析失敗");
+      }
+
+      setDielineResult(data);
+    } catch (err) {
+      setDielineError(err.message || "無法連線到後端服務。");
+    } finally {
+      setDielineLoading(false);
     }
   }
 
@@ -167,91 +227,210 @@ export default function App() {
               <span>STEP 1</span>
             </div>
 
-            <div
-              className={`dropzone ${dragging ? "dragging" : ""}`}
-              onClick={() => inputRef.current?.click()}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragging(true);
-              }}
-              onDragLeave={() => setDragging(false)}
-              onDrop={onDrop}
-            >
-              <input
-                ref={inputRef}
-                type="file"
-                accept=".jpg,.jpeg,.png,.tif,.tiff,.webp,.pdf"
-                hidden
-                onChange={(e) => chooseFile(e.target.files?.[0])}
-              />
-              <div className="upload-icon">↑</div>
-              <strong>{file ? file.name : "拖曳檔案到這裡"}</strong>
-              <span>{file ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : "或點擊選擇檔案"}</span>
-              <small>圖片：JPG / PNG / TIFF / WEBP；刀模：PDF，最大 50 MB</small>
-            </div>
+           
+{/* 第一區：圖片印刷檢查 */}
+<div className="inspection-section">
+  <h2>圖片印刷檢查</h2>
+  <p>檢查圖片尺寸、色彩模式、DPI 與出血設定。</p>
 
-            {!isPdf && <div className="settings-grid">
-              <label>
-                <span>成品寬度 mm</span>
-                <input type="number" value={settings.width} onChange={e => updateSetting("width", e.target.value)} />
-              </label>
-              <label>
-                <span>成品高度 mm</span>
-                <input type="number" value={settings.height} onChange={e => updateSetting("height", e.target.value)} />
-              </label>
-              <label>
-                <span>四邊出血 mm</span>
-                <input type="number" value={settings.bleed} onChange={e => updateSetting("bleed", e.target.value)} />
-              </label>
-              <label>
-                <span>最低 DPI</span>
-                <input type="number" value={settings.dpi} onChange={e => updateSetting("dpi", e.target.value)} />
-              </label>
-            </div>}
+  <div
+    className={`dropzone ${imageDragging ? "dragging" : ""}`}
+    onClick={() => imageInputRef.current?.click()}
+    onDragOver={(e) => {
+      e.preventDefault();
+      setImageDragging(true);
+    }}
+    onDragLeave={() => setImageDragging(false)}
+    onDrop={onImageDrop}
+  >
+    <input
+      ref={imageInputRef}
+      type="file"
+      accept=".jpg,.jpeg,.png,.tif,.tiff,.webp"
+      hidden
+      onChange={(e) => {
+        chooseImageFile(e.target.files?.[0]);
+        e.target.value = "";
+      }}
+    />
+    <div className="upload-icon">↑</div>
+    <strong>{imageFile ? imageFile.name : "拖曳圖片到這裡"}</strong>
+    <span>
+      {imageFile
+        ? `${(imageFile.size / 1024 / 1024).toFixed(2)} MB`
+        : "或點擊選擇圖片"}
+    </span>
+    <small>JPG / PNG / TIFF / WEBP，最大 50 MB</small>
+  </div>
 
-            {isPdf && (
-              <div className="dieline-settings">
-                <h3>貼紙刀模檢查設定</h3>
-                <p>圖層名稱含 CutContour、Dieline、Die Cut 等關鍵字，或符合自訂顏色的路徑，會列為已確認；其他向量路徑列為疑似。</p>
-                <div className="settings-grid">
-                  <label><span>刀模最小間距 mm</span><input type="number" min="0.1" step="0.1" value={dielineSettings.minGap} onChange={e => updateDielineSetting("minGap", e.target.value)} /></label>
-                  <label><span>距頁面邊界 mm</span><input type="number" min="0" step="0.1" value={dielineSettings.edgeClearance} onChange={e => updateDielineSetting("edgeClearance", e.target.value)} /></label>
-                  <label><span>最短線段警示 mm</span><input type="number" min="0.1" step="0.1" value={dielineSettings.minSegment} onChange={e => updateDielineSetting("minSegment", e.target.value)} /></label>
-                  <label><span>自訂刀模顏色（選填）</span><input type="text" placeholder="#FF00FF" value={dielineSettings.cutColor} onChange={e => updateDielineSetting("cutColor", e.target.value)} /></label>
-                </div>
-              </div>
-            )}
+<div className="settings-grid">
+  <label>
+    <span>成品寬度 mm</span>
+    <input type="number" value={settings.width} onChange={e => updateSetting("width", e.target.value)} />
+  </label>
+  <label>
+    <span>成品高度 mm</span>
+    <input type="number" value={settings.height} onChange={e => updateSetting("height", e.target.value)} />
+  </label>
+  <label>
+    <span>四邊出血 mm</span>
+    <input type="number" value={settings.bleed} onChange={e => updateSetting("bleed", e.target.value)} />
+  </label>
+  <label>
+    <span>最低 DPI</span>
+    <input type="number" value={settings.dpi} onChange={e => updateSetting("dpi", e.target.value)} />
+  </label>
+</div>
 
-            <button className="analyze-button" onClick={analyze} disabled={loading || !file}>
-              {loading ? "分析中…" : "開始檢查檔案 →"}
-            </button>
+  {imageError && <div className="error">{imageError}</div>}
 
-            {error && <div className="error">{error}</div>}
+  <button
+  className="analyze-button"
+  onClick={analyzeImage}
+  disabled={imageLoading || !imageFile}
+>
+  {imageLoading ? "圖片分析中…" : "開始圖片印刷檢查 →"}
+</button>
+
+{!result && !imageLoading && (
+  <div className="empty">
+    <div className="empty-symbol">◎</div>
+    <h3>等待圖片分析</h3>
+    <p>上傳圖片並按下「開始圖片印刷檢查」後，分析結果會顯示在這裡。</p>
+  </div>
+)}
+
+{imageLoading && (
+  <div className="empty">
+    <div className="spinner"></div>
+    <h3>正在分析圖片…</h3>
+    <p>正在讀取圖片 metadata 與印刷解析度。</p>
+  </div>
+)}
+</div>
+
+{/* 第二區：PDF 刀模檢查 */}
+<div className="inspection-section">
+  <h2>PDF 刀模檢查</h2>
+  <p>檢查 PDF 向量刀模路徑、間距與幾何異常。</p>
+
+  <div
+    className={`dropzone ${dielineDragging ? "dragging" : ""}`}
+    onClick={() => dielineInputRef.current?.click()}
+    onDragOver={(e) => {
+      e.preventDefault();
+      setDielineDragging(true);
+    }}
+    onDragLeave={() => setDielineDragging(false)}
+    onDrop={onDielineDrop}
+  >
+    <input
+      ref={dielineInputRef}
+      type="file"
+      accept=".pdf"
+      hidden
+      onChange={(e) => {
+        chooseDielineFile(e.target.files?.[0]);
+        e.target.value = "";
+      }}
+    />
+    <div className="upload-icon">↑</div>
+    <strong>{dielineFile ? dielineFile.name : "拖曳 PDF 到這裡"}</strong>
+    <span>
+      {dielineFile
+        ? `${(dielineFile.size / 1024 / 1024).toFixed(2)} MB`
+        : "或點擊選擇 PDF"}
+    </span>
+    <small>PDF 向量刀模檔案，最大 50 MB</small>
+  </div>
+
+<div className="dieline-settings">
+  <h3>貼紙刀模檢查設定</h3>
+  <p>圖層名稱含 CutContour、Dieline、Die Cut 等關鍵字，或符合自訂顏色的路徑，會列為已確認；其他向量路徑列為疑似。</p>
+
+  <div className="settings-grid">
+  <label>
+    <span>刀模最小間距 mm</span>
+    <input
+      type="number"
+      min="0.1"
+      step="0.1"
+      value={dielineSettings.minGap}
+      onChange={e => updateDielineSetting("minGap", e.target.value)}
+    />
+  </label>
+
+  <label>
+    <span>距頁面邊界 mm</span>
+    <input
+      type="number"
+      min="0"
+      step="0.1"
+      value={dielineSettings.edgeClearance}
+      onChange={e => updateDielineSetting("edgeClearance", e.target.value)}
+    />
+  </label>
+
+  <label>
+    <span>最短線段 mm</span>
+    <input
+      type="number"
+      min="0.1"
+      step="0.1"
+      value={dielineSettings.minSegment}
+      onChange={e => updateDielineSetting("minSegment", e.target.value)}
+    />
+  </label>
+
+  <label>
+    <span>刀模線條顏色</span>
+    <input
+      type="text"
+      value={dielineSettings.cutColor}
+      onChange={e => updateDielineSetting("cutColor", e.target.value)}
+      placeholder="例如 #FF00FF"
+    />
+  </label>
+</div>
+
+  {dielineError && <div className="error">{dielineError}</div>}
+
+<button
+  className="analyze-button"
+  onClick={analyzeDieline}
+  disabled={dielineLoading || !dielineFile}
+>
+  {dielineLoading ? "刀模分析中…" : "開始 PDF 刀模檢查 →"}
+</button>
+
+{!dielineResult && !dielineLoading && (
+  <div className="empty">
+    <div className="empty-symbol">◎</div>
+    <h3>等待刀模分析</h3>
+    <p>上傳 PDF 並按下「開始 PDF 刀模檢查」後，分析結果會顯示在這裡。</p>
+  </div>
+)}
+
+{dielineLoading && (
+  <div className="empty">
+    <div className="spinner"></div>
+    <h3>正在分析 PDF 刀模…</h3>
+    <p>正在讀取 PDF 向量路徑與幾何資訊。</p>
+  </div>
+)}
+
+</div>
+</div>     
+           
+
           </div>
 
-          <div className="panel result-panel">
-            <div className="panel-title">
-              <h2>② 檢查結果</h2>
-              <span>STEP 2</span>
-            </div>
-
-            {!result && !dielineResult && !loading && (
-              <div className="empty">
-                <div className="empty-symbol">◎</div>
-                <h3>等待檔案分析</h3>
-                <p>上傳檔案並按下「開始檢查檔案」後，分析結果會顯示在這裡。</p>
-              </div>
-            )}
-
-            {loading && (
-              <div className="empty">
-                <div className="spinner"></div>
-                <h3>正在分析檔案…</h3>
-                <p>{isPdf ? "正在讀取 PDF 向量路徑與幾何資訊。" : "正在讀取圖片 metadata 與印刷解析度。"}</p>
-              </div>
-            )}
-
-            {dielineResult && (
+ <div className="panel result-panel">
+  <div className="panel-title">
+    <h2>PDF 刀模檢查結果</h2>
+    <span>刀模分析</span>
+  </div>
+          {dielineResult && (
               <div className="result">
                 <DielineOverall status={dielineResult.overall} />
                 <div className="metrics">
@@ -295,7 +474,12 @@ export default function App() {
                 ))}
               </div>
             )}
-
+          </div>
+<div className="panel result-panel">
+          <div className="panel-title">
+            <h2>圖片印刷檢查結果</h2>
+            <span>圖片分析</span>
+          </div>
             {result && (
               <div className="result">
                 <Overall status={result.overall} />
