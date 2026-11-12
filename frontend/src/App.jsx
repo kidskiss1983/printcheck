@@ -468,11 +468,34 @@ function onDielineDrop(e) {
                     </div>
 
                     <div className="pdf-preview-image">
-                      <img
-                        src={dielineResult.previews[previewPage - 1]?.image}
-                        alt={`PDF 第 ${previewPage} 頁預覽`}
-                      />
-                    </div>
+  {(() => {
+    const preview = dielineResult.previews[previewPage - 1];
+    const pageData = dielineResult.pages.find(
+      page => page.page === previewPage
+    );
+
+    return (
+      <div className="pdf-preview-canvas">
+        <img
+          src={preview?.image}
+          alt={`PDF 第 ${previewPage} 頁預覽`}
+        />
+
+        {pageData?.issue_markers?.map((marker, index) => (
+          <span
+            key={`${marker.path}-${index}`}
+            className="pdf-issue-marker"
+            title={`異常路徑 ${marker.path}`}
+            style={{
+              left: `${marker.x / (preview?.width || 1) * 100}%`,
+              top: `${marker.y / (preview?.height || 1) * 100}%`,
+            }}
+          />
+        ))}
+      </div>
+    );
+  })()}
+</div>
                   </div>
                 )}
                 <h3 className="checks-title">刀模異常檢查</h3>
