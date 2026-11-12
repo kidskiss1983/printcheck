@@ -118,7 +118,9 @@ h1 {
   gap: 22px;
   align-items: start;
 }
-
+.workspace > .result-panel {
+  grid-column: 2;
+}
 .panel {
   background: white;
   border: 1px solid #e5e7eb;
