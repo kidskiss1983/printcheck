@@ -195,9 +195,15 @@ def analyze_pdf_dielines(
             }
             page_shapes.append(shape)
             all_shapes.append(shape)
-
+        issue_markers = []
         issues = []
         for shape in page_shapes:
+            x0, y0, x1, y1 = shape["_line"].bounds
+            issue_markers.append({
+                "path": shape["path_index"],
+                "x": (x0 + x1) / 2,
+                "y": (y0 + y1) / 2,
+            })
             if not shape["closed"]:
                 issues.append({"code": "open_path", "severity": "warning", "page": page_index + 1,
                                "path": shape["path_index"], "message": f"路徑 {shape['path_index']} 未封閉，請確認是否為完整刀模。"})
@@ -240,6 +246,7 @@ def analyze_pdf_dielines(
             "height_mm": round(page_rect.height * pt_to_mm, 2),
             "vector_path_count": len(page_shapes),
             "issues": issues,
+            "issue_markers": issue_markers,
         })
         findings.extend(issues)
 
