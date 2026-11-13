@@ -63,6 +63,44 @@ const [dielineError, setDielineError] = useState("");
 const [result, setResult] = useState(null);
   const [dielineResult, setDielineResult] = useState(null);
   const [previewPage, setPreviewPage] = useState(1);
+  
+function downloadDielinePreview() {
+  const preview = dielineResult?.previews?.[previewPage - 1];
+  const pageData = dielineResult?.pages?.find(
+    page => page.page === previewPage
+  );
+
+  if (!preview?.image) return;
+
+  const img = new Image();
+
+  img.onload = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = preview.width;
+    canvas.height = preview.height;
+
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    (pageData?.issue_markers || []).forEach(marker => {
+      ctx.beginPath();
+      ctx.arc(marker.x, marker.y, 9, 0, Math.PI * 2);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = "#ff3030";
+      ctx.fillStyle = "rgba(255, 0, 0, 0.08)";
+      ctx.fill();
+      ctx.stroke();
+    });
+
+    const link = document.createElement("a");
+    link.download = `PDF_刀模檢查_第${previewPage}頁.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  };
+
+  img.src = preview.image;
+}
+
   const [dielineSettings, setDielineSettings] = useState({ minGap: 2, edgeClearance: 3, minSegment: 0.5, cutColor: "" });
 
 
@@ -445,27 +483,35 @@ function onDielineDrop(e) {
                   <div className="pdf-preview">
                     <h3 className="checks-title">PDF 預覽與異常位置</h3>
 
-                    <div className="pdf-preview-toolbar">
-                      <button
-                        type="button"
-                        disabled={previewPage <= 1}
-                        onClick={() => setPreviewPage(p => p - 1)}
-                      >
-                        上一頁
-                      </button>
+                    
+<div className="pdf-preview-toolbar">
+  <button
+    type="button"
+    disabled={previewPage <= 1}
+    onClick={() => setPreviewPage(p => p - 1)}
+  >
+    上一頁
+  </button>
 
-                      <span>
-                        第 {previewPage} 頁 / 共 {dielineResult.previews.length} 頁
-                      </span>
+  <span>
+    第 {previewPage} 頁 / 共 {dielineResult.previews.length} 頁
+  </span>
 
-                      <button
-                        type="button"
-                        disabled={previewPage >= dielineResult.previews.length}
-                        onClick={() => setPreviewPage(p => p + 1)}
-                      >
-                        下一頁
-                      </button>
-                    </div>
+  <button
+    type="button"
+    disabled={previewPage >= dielineResult.previews.length}
+    onClick={() => setPreviewPage(p => p + 1)}
+  >
+    下一頁
+  </button>
+
+  <button
+    type="button"
+    onClick={downloadDielinePreview}
+  >
+    下載含紅圈 PNG
+  </button>
+</div>
 
                     <div className="pdf-preview-image">
   {(() => {
