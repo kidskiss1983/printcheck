@@ -7,6 +7,7 @@ from typing import Any
 
 import fitz
 from shapely.geometry import LineString, Polygon
+from shapely.ops import nearest_points
 from shapely.ops import unary_union
 
 
@@ -216,54 +217,78 @@ def analyze_pdf_dielines(
         marker_paths = set()
 
         # pairwise spacing / overlap
+        issue_markers = []
+
         for i in range(len(page_shapes)):
             for j in range(i + 1, len(page_shapes)):
                 a, b = page_shapes[i], page_shapes[j]
-                dist_mm = a["_line"].distance(b["_line"]) * pt_to_mm
 
-                if a["_line"].equals(b["_line"]):
-                    issues.append({
-                        "code": "duplicate_path",
-                        "severity": "warning",
-                        "page": page_index + 1,
-                        "path": a["path_index"],
-                        "other_path": b["path_index"],
-                        "message": f"路徑 {a['path_index']} 與 {b['path_index']} 完全重複。"
-                    })
-                    marker_paths.update([a["path_index"], b["path_index"]])
+                line_a = a["_line"]
+                line_b = b["_line"]
 
-                elif a["_line"].intersects(b["_line"]) or dist_mm <= 0.01:
-                    issues.append({
-                        "code": "overlap",
-                        "severity": "fail",
-                        "page": page_index + 1,
-                        "path": a["path_index"],
-                        "other_path": b["path_index"],
-                        "message": f"路徑 {a['path_index']} 與 {b['path_index']} 重疊或相交。"
-                    })
-                    marker_paths.update([a["path_index"], b["path_index"]])
+                dist_mm = line_a.distance(line_b) * pt_to_mm
+
+                issue_code = None
+                severity = None
+                message = None
+
+                if line_a.equals(line_b):
+                    issue_code = "duplicate_path"
+                    severity = "warning"
+                    message = (
+                        f"路徑 {a['path_index']} 與 "
+                        f"{b['path_index']} 完全重複。"
+                    )
+
+                elif line_a.intersects(line_b) or dist_mm <= 0.01:
+                    issue_code = "overlap"
+                    severity = "fail"
+                    message = (
+                        f"路徑 {a['path_index']} 與 "
+                        f"{b['path_index']} 重疊或相交。"
+                    )
 
                 elif dist_mm < min_gap_mm:
+                    issue_code = "small_gap"
+                    severity = "warning"
+                    message = (
+                        f"路徑 {a['path_index']} 與 "
+                        f"{b['path_index']} 間距約 "
+                        f"{dist_mm:.2f} mm，"
+                        f"小於 {min_gap_mm:g} mm。"
+                    )
+
+                if issue_code:
                     issues.append({
-                        "code": "small_gap",
-                        "severity": "warning",
+                        "code": issue_code,
+                        "severity": severity,
                         "page": page_index + 1,
                         "path": a["path_index"],
                         "other_path": b["path_index"],
-                        "message": f"路徑 {a['path_index']} 與 {b['path_index']} 間距約 {dist_mm:.2f} mm，小於 {min_gap_mm:g} mm。"
+                        "message": message
                     })
-                    marker_paths.update([a["path_index"], b["path_index"]])
 
-        # 只替異常路徑產生紅圈定位
-        issue_markers = []
-        for shape in page_shapes:
-            if shape["path_index"] in marker_paths:
-                x0, y0, x1, y1 = shape["_line"].bounds
-                issue_markers.append({
-                    "path": shape["path_index"],
-                    "x": (x0 + x1) / 2,
-                    "y": (y0 + y1) / 2,
-                })
+                    # 計算兩條刀模線的最近點
+                    point_a, point_b = nearest_points(
+                        line_a, line_b
+                    )
+
+                    marker_x = (point_a.x + point_b.x) / 2
+                    marker_y = (point_a.y + point_b.y) / 2
+
+                    # 換算成預覽圖片像素座標
+                    issue_markers.append({
+                        "path": a["path_index"],
+                        "other_path": b["path_index"],
+                        "x": (
+                            (marker_x - page_rect.x0)
+                            * pix.width / page_rect.width
+                        ),
+                        "y": (
+                            (marker_y - page_rect.y0)
+                            * pix.height / page_rect.height
+                        ),
+                    })
         page_results.append({
             "page": page_index + 1,
             "width_mm": round(page_rect.width * pt_to_mm, 2),
