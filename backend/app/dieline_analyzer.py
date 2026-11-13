@@ -133,9 +133,9 @@ def analyze_pdf_dielines(
     for page_index, page in enumerate(doc):
         # 產生 PDF 頁面預覽圖
         pix = page.get_pixmap(
-            matrix=fitz.Matrix(1, 1),
-            alpha=False
-        )
+    matrix=fitz.Matrix(2, 2),
+    alpha=False
+)
         preview_data = base64.b64encode(
             pix.tobytes("png")
         ).decode("utf-8")
@@ -150,6 +150,12 @@ def analyze_pdf_dielines(
         page_rect = page.rect
         drawings = page.get_drawings()
         page_shapes = []
+        text_data = page.get_text("dict")
+        text_boxes = [
+    block["bbox"]
+    for block in text_data.get("blocks", [])
+    if block.get("type") == 0
+]
         for drawing_index, drawing in enumerate(drawings):
             if len(page_shapes) >= 1500:
                 doc.close()
@@ -160,6 +166,16 @@ def analyze_pdf_dielines(
             total_paths += 1
             line = LineString(pts)
             if line.length <= 0:
+                continue
+            x0, y0, x1, y1 = line.bounds
+            is_text_path = any(
+                x0 >= box[0] - 1 and
+                y0 >= box[1] - 1 and
+                x1 <= box[2] + 1 and
+                y1 <= box[3] + 1
+                for box in text_boxes
+            )
+            if is_text_path:
                 continue
             closed = bool(drawing.get("closePath")) or _distance(pts[0], pts[-1]) <= 0.75
             layer = drawing.get("layer")
@@ -197,49 +213,57 @@ def analyze_pdf_dielines(
             all_shapes.append(shape)
         issue_markers = []
         issues = []
-        for shape in page_shapes:
-            x0, y0, x1, y1 = shape["_line"].bounds
-            issue_markers.append({
-                "path": shape["path_index"],
-                "x": (x0 + x1) / 2,
-                "y": (y0 + y1) / 2,
-            })
-            if not shape["closed"]:
-                issues.append({"code": "open_path", "severity": "warning", "page": page_index + 1,
-                               "path": shape["path_index"], "message": f"路徑 {shape['path_index']} 未封閉，請確認是否為完整刀模。"})
-            if shape["_lengths"] and min(shape["_lengths"]) < min_segment_mm:
-                issues.append({"code": "short_segment", "severity": "warning", "page": page_index + 1,
-                               "path": shape["path_index"], "message": f"路徑 {shape['path_index']} 含有短於 {min_segment_mm:g} mm 的線段。"})
-            if not shape["_line"].is_simple:
-                issues.append({"code": "self_intersection", "severity": "fail", "page": page_index + 1,
-                               "path": shape["path_index"], "message": f"路徑 {shape['path_index']} 有自我交叉。"})
-            if shape["closed"] and shape["_polygon"] is not None and not shape["_polygon"].is_valid:
-                issues.append({"code": "invalid_polygon", "severity": "fail", "page": page_index + 1,
-                               "path": shape["path_index"], "message": f"路徑 {shape['path_index']} 的封閉形狀不合法。"})
-            # distance to PDF page edge, measured using bounding box
-            x0, y0, x1, y1 = shape["_line"].bounds
-            edge_pt = min(x0-page_rect.x0, y0-page_rect.y0, page_rect.x1-x1, page_rect.y1-y1)
-            edge_mm = edge_pt * pt_to_mm
-            if edge_mm < edge_clearance_mm:
-                issues.append({"code": "edge_clearance", "severity": "warning", "page": page_index + 1,
-                               "path": shape["path_index"], "message": f"路徑距離 PDF 頁面邊界約 {max(0,edge_mm):.2f} mm，小於設定的 {edge_clearance_mm:g} mm。"})
+        marker_paths = set()
+
         # pairwise spacing / overlap
         for i in range(len(page_shapes)):
-            for j in range(i+1, len(page_shapes)):
+            for j in range(i + 1, len(page_shapes)):
                 a, b = page_shapes[i], page_shapes[j]
                 dist_mm = a["_line"].distance(b["_line"]) * pt_to_mm
+
                 if a["_line"].equals(b["_line"]):
-                    issues.append({"code": "duplicate_path", "severity": "warning", "page": page_index + 1,
-                                   "path": a["path_index"], "other_path": b["path_index"],
-                                   "message": f"路徑 {a['path_index']} 與 {b['path_index']} 完全重複。"})
+                    issues.append({
+                        "code": "duplicate_path",
+                        "severity": "warning",
+                        "page": page_index + 1,
+                        "path": a["path_index"],
+                        "other_path": b["path_index"],
+                        "message": f"路徑 {a['path_index']} 與 {b['path_index']} 完全重複。"
+                    })
+                    marker_paths.update([a["path_index"], b["path_index"]])
+
                 elif a["_line"].intersects(b["_line"]) or dist_mm <= 0.01:
-                    issues.append({"code": "overlap", "severity": "fail", "page": page_index + 1,
-                                   "path": a["path_index"], "other_path": b["path_index"],
-                                   "message": f"路徑 {a['path_index']} 與 {b['path_index']} 重疊或相交。"})
+                    issues.append({
+                        "code": "overlap",
+                        "severity": "fail",
+                        "page": page_index + 1,
+                        "path": a["path_index"],
+                        "other_path": b["path_index"],
+                        "message": f"路徑 {a['path_index']} 與 {b['path_index']} 重疊或相交。"
+                    })
+                    marker_paths.update([a["path_index"], b["path_index"]])
+
                 elif dist_mm < min_gap_mm:
-                    issues.append({"code": "small_gap", "severity": "warning", "page": page_index + 1,
-                                   "path": a["path_index"], "other_path": b["path_index"],
-                                   "message": f"路徑 {a['path_index']} 與 {b['path_index']} 間距約 {dist_mm:.2f} mm，小於 {min_gap_mm:g} mm。"})
+                    issues.append({
+                        "code": "small_gap",
+                        "severity": "warning",
+                        "page": page_index + 1,
+                        "path": a["path_index"],
+                        "other_path": b["path_index"],
+                        "message": f"路徑 {a['path_index']} 與 {b['path_index']} 間距約 {dist_mm:.2f} mm，小於 {min_gap_mm:g} mm。"
+                    })
+                    marker_paths.update([a["path_index"], b["path_index"]])
+
+        # 只替異常路徑產生紅圈定位
+        issue_markers = []
+        for shape in page_shapes:
+            if shape["path_index"] in marker_paths:
+                x0, y0, x1, y1 = shape["_line"].bounds
+                issue_markers.append({
+                    "path": shape["path_index"],
+                    "x": (x0 + x1) / 2,
+                    "y": (y0 + y1) / 2,
+                })
         page_results.append({
             "page": page_index + 1,
             "width_mm": round(page_rect.width * pt_to_mm, 2),
