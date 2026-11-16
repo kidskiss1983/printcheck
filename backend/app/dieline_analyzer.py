@@ -119,7 +119,7 @@ def analyze_pdf_dielines(
         doc.close()
         raise ValueError("PDF 沒有可檢查的頁面。")
 
-        # PDF points -> mm
+    # PDF points -> mm
     pt_to_mm = 25.4 / 72
     findings = []
     page_results = []
@@ -164,7 +164,7 @@ def analyze_pdf_dielines(
         page["vector_path_count"]
         for page in page_results
     )
-   for shape in all_shapes:
+    for shape in all_shapes:
         shape.pop("_geom", None)
         shape.pop("_line", None)
         shape.pop("_polygon", None)
