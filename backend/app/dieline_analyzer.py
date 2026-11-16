@@ -289,23 +289,69 @@ def analyze_pdf_dielines(
                 shape["_polygon"].area * (pt_to_mm ** 2)
             )
 
-        # 排除面積明顯過小的封閉圖形
-        if closed_shapes:
 
-            max_area = max(
-                shape["_area_mm2"]
-                for shape in closed_shapes
-            )
+        # 比較所有封閉外框的尺寸
+        for shape in closed_shapes:
 
-            analysis_shapes = [
-                shape for shape in closed_shapes
-                if shape["_area_mm2"] >= max_area * 0.10
-            ]
+            x0, y0, x1, y1 = shape["_polygon"].bounds
 
-        else:
-            analysis_shapes = []
+            width_mm = (x1 - x0) * pt_to_mm
+            height_mm = (y1 - y0) * pt_to_mm
+
+            # 將長短邊排序，避免產品旋轉後無法比較
+            shape["_dimensions_mm"] = sorted([
+                width_mm,
+                height_mm
+            ])
+
+            # 預設列為待人工確認
+            shape["dieline_role"] = "review"
+
+        # 尺寸相近的外框判斷標準
+        size_similarity = 0.70
+
+        # 記錄有其他相近尺寸外框的產品
+        candidate_indices = set()
+
+        for i in range(len(closed_shapes)):
+
+            for j in range(i + 1, len(closed_shapes)):
+
+                dimensions_a = closed_shapes[i]["_dimensions_mm"]
+                dimensions_b = closed_shapes[j]["_dimensions_mm"]
+
+                ratios = [
+                    min(a, b) / max(a, b)
+                    for a, b in zip(dimensions_a, dimensions_b)
+                    if max(a, b) > 0
+                ]
+
+                # 長短邊尺寸都相近，才列為主要候選
+                if (
+                    len(ratios) == 2
+                    and all(ratio >= size_similarity for ratio in ratios)
+                ):
+                    candidate_indices.add(i)
+                    candidate_indices.add(j)
+
+        # 分成主要候選與待人工確認
+        analysis_shapes = []
+        review_shapes = []
+
+        for index, shape in enumerate(closed_shapes):
+
+            if index in candidate_indices:
+
+                shape["dieline_role"] = "candidate"
+                analysis_shapes.append(shape)
+
+            else:
+
+                shape["dieline_role"] = "review"
+                review_shapes.append(shape)
 
         total_candidate_dielines += len(analysis_shapes)
+
 
         # 比較不同產品外框之間的間距
         for i in range(len(analysis_shapes)):
