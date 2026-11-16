@@ -159,12 +159,12 @@ def analyze_pdf_dielines(
             "message": "PDF 中未擷取到可分析的向量路徑；若刀模是點陣圖片或已點陣化，無法用此功能辨識。",
         })
 
-confirmed = 0
-suspected = sum(
-    page["vector_path_count"]
-    for page in page_results
-)
-    for shape in all_shapes:
+    confirmed = 0
+    suspected = sum(
+        page["vector_path_count"]
+        for page in page_results
+    )
+   for shape in all_shapes:
         shape.pop("_geom", None)
         shape.pop("_line", None)
         shape.pop("_polygon", None)
