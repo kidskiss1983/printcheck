@@ -168,6 +168,7 @@ def analyze_pdf_dielines(
         shape.pop("_geom", None)
         shape.pop("_line", None)
         shape.pop("_polygon", None)
+        shape.pop("_area_mm2", None)
         shape.pop("_lengths", None)
     doc.close()
 
