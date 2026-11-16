@@ -253,7 +253,12 @@ def analyze_pdf_dielines(
                 line_b = b["_line"]
 
                 dist_mm = line_a.distance(line_b) * pt_to_mm
+                # 排除互相重疊或接觸的外框
+                polygon_a = a["_polygon"]
+                polygon_b = b["_polygon"]
 
+                if polygon_a.intersects(polygon_b):
+                    continue
                 issue_code = None
                 severity = None
                 message = None
@@ -320,7 +325,7 @@ def analyze_pdf_dielines(
             "page": page_index + 1,
             "width_mm": round(page_rect.width * pt_to_mm, 2),
             "height_mm": round(page_rect.height * pt_to_mm, 2),
-            "vector_path_count": len(page_shapes),
+            "vector_path_count": len(analysis_shapes),
             "issues": issues,
             "issue_markers": issue_markers,
         })
@@ -334,8 +339,11 @@ def analyze_pdf_dielines(
             "message": "PDF 中未擷取到可分析的向量路徑；若刀模是點陣圖片或已點陣化，無法用此功能辨識。",
         })
 
-    confirmed = sum(1 for s in all_shapes if s["classification"] == "confirmed")
-    suspected = len(all_shapes) - confirmed
+confirmed = 0
+suspected = sum(
+    page["vector_path_count"]
+    for page in page_results
+)
     for shape in all_shapes:
         shape.pop("_geom", None)
         shape.pop("_line", None)
@@ -353,7 +361,7 @@ def analyze_pdf_dielines(
         "vector_path_count": total_paths,
         "confirmed_dielines": confirmed,
         "suspected_dielines": suspected,
-        "classification_note": "目前以圖層名稱或使用者指定顏色作為確認依據；PDF 專色名稱需視檔案內部結構而定，未能可靠讀取者不會自動判定為已確認。",
+        "classification_note": "目前依據封閉外框及相對面積篩選疑似刀模；仍可能包含文字外框或裝飾圖形，檢查結果需人工確認。",
         "settings": {"min_gap_mm": min_gap_mm, "edge_clearance_mm": edge_clearance_mm, "min_segment_mm": min_segment_mm, "cut_color": configured_color},
         "pages": page_results,
         "previews": previews,
