@@ -215,13 +215,39 @@ def analyze_pdf_dielines(
         issue_markers = []
         issues = []
         marker_paths = set()
+        # 只選取完整封閉的候選外框
+        closed_shapes = [
+            shape for shape in page_shapes
+            if shape["closed"]
+            and shape["_polygon"] is not None
+            and shape["_polygon"].is_valid
+            and shape["_polygon"].area > 0
+        ]
 
+        # 計算封閉外框面積（平方毫米）
+        for shape in closed_shapes:
+            shape["_area_mm2"] = (
+                shape["_polygon"].area * (pt_to_mm ** 2)
+            )
+        # 排除面積明顯過小的封閉圖形
+        if closed_shapes:
+            max_area = max(
+                shape["_area_mm2"]
+                for shape in closed_shapes
+            )
+
+            analysis_shapes = [
+                shape for shape in closed_shapes
+                if shape["_area_mm2"] >= max_area * 0.10
+            ]
+        else:
+            analysis_shapes = []
         # pairwise spacing / overlap
         issue_markers = []
 
-        for i in range(len(page_shapes)):
-            for j in range(i + 1, len(page_shapes)):
-                a, b = page_shapes[i], page_shapes[j]
+        for i in range(len(analysis_shapes)):
+            for j in range(i + 1, len(analysis_shapes)):
+                a, b = analysis_shapes[i], analysis_shapes[j]
 
                 line_a = a["_line"]
                 line_b = b["_line"]
@@ -242,11 +268,12 @@ def analyze_pdf_dielines(
 
                 elif line_a.intersects(line_b) or dist_mm <= 0.01:
                     issue_code = "overlap"
-                    severity = "fail"
+                    severity = "warning"
                     message = (
                         f"路徑 {a['path_index']} 與 "
-                        f"{b['path_index']} 重疊或相交。"
+                        f"{b['path_index']} 相交，請人工確認是否為正常刀模交會。"
                     )
+
 
                 elif dist_mm < min_gap_mm:
                     issue_code = "small_gap"
