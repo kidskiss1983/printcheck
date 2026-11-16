@@ -133,7 +133,6 @@ def analyze_pdf_dielines(
 
     total_paths = 0
     total_candidate_dielines = 0
-
     configured_color = cut_color.strip().upper() if cut_color else None
 
     if configured_color and not re.fullmatch(r"#[0-9A-F]{6}", configured_color):
@@ -352,31 +351,44 @@ def analyze_pdf_dielines(
 
         total_candidate_dielines += len(analysis_shapes)
 
-
         # 比較不同產品外框之間的間距
-        for i in range(len(analysis_shapes)):
+               # 所有有效封閉外框都參與異常檢查
+        for i in range(len(closed_shapes)):
 
-            for j in range(i + 1, len(analysis_shapes)):
+            for j in range(i + 1, len(closed_shapes)):
 
-                a = analysis_shapes[i]
-                b = analysis_shapes[j]
+                a = closed_shapes[i]
+                b = closed_shapes[j]
 
                 line_a = a["_line"]
                 line_b = b["_line"]
 
                 dist_mm = line_a.distance(line_b) * pt_to_mm
 
-                # 排除互相重疊或接觸的外框
+
+                # 檢查產品刀模外框是否重疊
                 polygon_a = a["_polygon"]
                 polygon_b = b["_polygon"]
-
-                if polygon_a.intersects(polygon_b):
-                    continue
 
                 issue_code = None
                 severity = None
                 message = None
 
+                # 比較這兩個外框的尺寸是否相近
+                dimensions_a = a["_dimensions_mm"]
+                dimensions_b = b["_dimensions_mm"]
+
+                size_ratios = [
+                    min(x, y) / max(x, y)
+                    for x, y in zip(dimensions_a, dimensions_b)
+                    if max(x, y) > 0
+                ]
+
+                similar_size = (
+                    len(size_ratios) == 2
+                    and all(ratio >= 0.70 for ratio in size_ratios)
+                )
+                # 依照異常嚴重程度判斷
                 if line_a.equals(line_b):
 
                     issue_code = "duplicate_path"
@@ -387,6 +399,16 @@ def analyze_pdf_dielines(
                         f"{b['path_index']} 完全重複。"
                     )
 
+                elif polygon_a.intersects(polygon_b):
+
+                    issue_code = "overlap"
+                    severity = "warning"
+
+                    message = (
+                        f"產品外框 {a['path_index']} 與 "
+                        f"{b['path_index']} 發生重疊或接觸。"
+                    )
+
                 elif line_a.intersects(line_b) or dist_mm <= 0.01:
 
                     issue_code = "overlap"
@@ -394,12 +416,10 @@ def analyze_pdf_dielines(
 
                     message = (
                         f"路徑 {a['path_index']} 與 "
-                        f"{b['path_index']} 相交，"
-                        "請人工確認是否為正常刀模交會。"
+                        f"{b['path_index']} 相交。"
                     )
 
-                elif dist_mm < min_gap_mm:
-
+                elif similar_size and dist_mm < min_gap_mm:
                     issue_code = "small_gap"
                     severity = "warning"
 
@@ -421,14 +441,38 @@ def analyze_pdf_dielines(
                         "message": message
                     })
 
-                    # 計算兩條刀模線的最近點
-                    point_a, point_b = nearest_points(
-                        line_a,
-                        line_b
-                    )
+                   
+                    # 計算異常位置
+                    if issue_code == "overlap":
 
-                    marker_x = (point_a.x + point_b.x) / 2
-                    marker_y = (point_a.y + point_b.y) / 2
+                        overlap_geom = polygon_a.intersection(
+                            polygon_b
+                        )
+
+                        if not overlap_geom.is_empty and overlap_geom.area > 0:
+                            marker_point = overlap_geom.representative_point()
+                            marker_x = marker_point.x
+                            marker_y = marker_point.y
+
+                        else:
+                            point_a, point_b = nearest_points(
+                                line_a,
+                                line_b
+                            )
+
+                            marker_x = (point_a.x + point_b.x) / 2
+                            marker_y = (point_a.y + point_b.y) / 2
+
+                    else:
+
+                        point_a, point_b = nearest_points(
+                            line_a,
+                            line_b
+                        )
+
+                        marker_x = (point_a.x + point_b.x) / 2
+                        marker_y = (point_a.y + point_b.y) / 2
+
 
                     # 換算成預覽圖片像素座標
                     issue_markers.append({
@@ -451,6 +495,7 @@ def analyze_pdf_dielines(
             "height_mm": round(page_rect.height * pt_to_mm, 2),
             "vector_path_count": len(page_shapes),
             "candidate_dieline_count": len(analysis_shapes),
+            "review_dieline_count": len(review_shapes),
             "issues": issues,
             "issue_markers": issue_markers,
         })
