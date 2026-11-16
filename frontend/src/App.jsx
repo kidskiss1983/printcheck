@@ -61,8 +61,8 @@ const [dielineDragging, setDielineDragging] = useState(false);
 const [dielineLoading, setDielineLoading] = useState(false);
 const [dielineError, setDielineError] = useState("");
 const [result, setResult] = useState(null);
-  const [dielineResult, setDielineResult] = useState(null);
-  const [previewPage, setPreviewPage] = useState(1);
+const [dielineResult, setDielineResult] = useState(null);
+const [previewPage, setPreviewPage] = useState(1);
   
 function downloadDielinePreview() {
   const preview = dielineResult?.previews?.[previewPage - 1];
@@ -464,121 +464,83 @@ function onDielineDrop(e) {
 
           </div>
 
+
 <div className="panel result-panel dieline-result-panel">
   <div className="panel-title">
     <h2>PDF 刀模檢查結果</h2>
     <span>刀模分析</span>
   </div>
-          {dielineResult && (
-              <div className="result">
-                <DielineOverall status={dielineResult.overall} />
-                <div className="metrics">
-                  <div className="metric"><span>PDF 頁數</span><strong>{dielineResult.page_count}</strong></div>
-                  <div className="metric"><span>向量路徑</span><strong>{dielineResult.vector_path_count}</strong></div>
-                  <div className="metric"><span>已確認刀模</span><strong className="good">{dielineResult.confirmed_dielines}</strong></div>
-                  <div className="metric"><span>疑似刀模</span><strong className="attention">{dielineResult.suspected_dielines}</strong></div>
-                </div>
-                <div className="dieline-note">{dielineResult.classification_note}</div>
-                                {dielineResult.previews?.length > 0 && (
-                  <div className="pdf-preview">
-                    <h3 className="checks-title">PDF 預覽與異常位置</h3>
 
-                    
-<div className="pdf-preview-toolbar">
-  <button
-    type="button"
-    disabled={previewPage <= 1}
-    onClick={() => setPreviewPage(p => p - 1)}
-  >
-    上一頁
-  </button>
+  {dielineResult && (
+    <div className="result">
+      {dielineResult.previews?.length > 0 && (
+        <div className="pdf-preview">
+          <h3 className="checks-title">PDF 預覽與異常位置</h3>
 
-  <span>
-    第 {previewPage} 頁 / 共 {dielineResult.previews.length} 頁
-  </span>
+          <div className="pdf-preview-toolbar">
+            <button
+              type="button"
+              disabled={previewPage <= 1}
+              onClick={() => setPreviewPage(p => p - 1)}
+            >
+              上一頁
+            </button>
 
-  <button
-    type="button"
-    disabled={previewPage >= dielineResult.previews.length}
-    onClick={() => setPreviewPage(p => p + 1)}
-  >
-    下一頁
-  </button>
+            <span>
+              第 {previewPage} 頁 / 共 {dielineResult.previews.length} 頁
+            </span>
 
-  <button
-    type="button"
-    onClick={downloadDielinePreview}
-  >
-    下載含紅圈 PNG
-  </button>
-</div>
+            <button
+              type="button"
+              disabled={previewPage >= dielineResult.previews.length}
+              onClick={() => setPreviewPage(p => p + 1)}
+            >
+              下一頁
+            </button>
 
-                    <div className="pdf-preview-image">
-  {(() => {
-    const preview = dielineResult.previews[previewPage - 1];
-    const pageData = dielineResult.pages.find(
-      page => page.page === previewPage
-    );
-
-    return (
-      <div className="pdf-preview-canvas">
-        <img
-          src={preview?.image}
-          alt={`PDF 第 ${previewPage} 頁預覽`}
-        />
-
-        {pageData?.issue_markers?.map((marker, index) => (
-          <span
-            key={`${marker.path}-${index}`}
-            className="pdf-issue-marker"
-            title={`異常路徑 ${marker.path}`}
-            style={{
-              left: `${marker.x / (preview?.width || 1) * 100}%`,
-              top: `${marker.y / (preview?.height || 1) * 100}%`,
-            }}
-          />
-        ))}
-      </div>
-    );
-  })()}
-</div>
-                  </div>
-                )}
-                <h3 className="checks-title">刀模異常檢查</h3>
-                {dielineResult.findings.length === 0 ? (
-                  <div className="check"><StatusIcon status="pass" /><div><strong>未發現設定範圍內的幾何異常</strong><p>仍請人工確認刀模路徑是否符合實際加工需求。</p></div></div>
-                ) : (
-                  <div className="checks">
-                    {dielineResult.findings.map((finding, index) => (
-                      <div className="check" key={`${finding.code}-${index}`}>
-                        <StatusIcon status={finding.severity === "fail" ? "fail" : "warning"} />
-                        <div><strong>{finding.code} · 第 {finding.page} 頁</strong><p>{finding.message}</p></div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <h3 className="checks-title">向量路徑清單</h3>
-                <div className="path-list">
-                  {dielineResult.paths.map(path => (
-                    <div className="path-row" key={`${path.page}-${path.path_index}`}>
-                      <div><strong>第 {path.page} 頁 · 路徑 {path.path_index}</strong><small>{path.layer || "未命名圖層"} · {path.color || "未提供線條顏色"}</small></div>
-                      <span className={path.classification === "confirmed" ? "path-confirmed" : "path-suspected"}>{path.classification === "confirmed" ? "已確認" : "疑似"}</span>
-                      <span>{path.closed ? "封閉" : "開放"} · {path.length_mm} mm</span>
-                    </div>
-                  ))}
-                  {dielineResult.paths.length === 0 && <p className="dieline-note">未擷取到可分析的向量路徑。若刀模已被點陣化，請提供含向量刀模的 PDF。</p>}
-                </div>
-                <h3 className="checks-title">各頁面摘要</h3>
-                {dielineResult.pages.map(page => (
-                  <div className="page-summary" key={page.page}>
-                    <strong>第 {page.page} 頁</strong>
-                    <span>{page.width_mm} × {page.height_mm} mm</span>
-                    <span>{page.vector_path_count} 條向量路徑</span>
-                  </div>
-                ))}
-              </div>
-            )}
+            <button
+              type="button"
+              onClick={downloadDielinePreview}
+            >
+              下載含紅圈 PNG
+            </button>
           </div>
+
+          <div className="pdf-preview-image">
+            {(() => {
+              const preview = dielineResult.previews[previewPage - 1];
+              const pageData = dielineResult.pages.find(
+                page => page.page === previewPage
+              );
+
+              return (
+                <div className="pdf-preview-canvas">
+                  <img
+                    src={preview?.image}
+                    alt={`PDF 第 ${previewPage} 頁預覽`}
+                  />
+
+                  {pageData?.issue_markers?.map((marker, index) => (
+                    <span
+                      key={`${marker.path}-${index}`}
+                      className="pdf-issue-marker"
+                      title={`異常路徑 ${marker.path}`}
+                      style={{
+                        left: `${marker.x / (preview?.width || 1) * 100}%`,
+                        top: `${marker.y / (preview?.height || 1) * 100}%`,
+                      }}
+                    />
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+    </div>
+  )}
+</div>
+
 <div className="panel result-panel image-result-panel">
           <div className="panel-title">
             <h2>圖片印刷檢查結果</h2>
