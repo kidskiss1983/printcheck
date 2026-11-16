@@ -95,10 +95,13 @@ def analyze_pdf_dielines(
     min_segment_mm: float = 0.5,
     cut_color: str | None = None,
 ) -> dict[str, Any]:
+
     if not raw:
         raise ValueError("上傳的 PDF 是空的。")
+
     if len(raw) > 50 * 1024 * 1024:
         raise ValueError("檔案超過 50 MB 上限。")
+
     for value, label, allow_zero in [
         (min_gap_mm, "最小間距", False),
         (edge_clearance_mm, "邊界安全距離", True),
@@ -115,24 +118,31 @@ def analyze_pdf_dielines(
     if doc.is_encrypted:
         doc.close()
         raise ValueError("PDF 有密碼保護，請先解除密碼再上傳。")
+
     if doc.page_count == 0:
         doc.close()
         raise ValueError("PDF 沒有可檢查的頁面。")
 
     # PDF points -> mm
     pt_to_mm = 25.4 / 72
+
     findings = []
     page_results = []
     previews = []
     all_shapes = []
+
     total_paths = 0
+    total_candidate_dielines = 0
+
     configured_color = cut_color.strip().upper() if cut_color else None
 
     if configured_color and not re.fullmatch(r"#[0-9A-F]{6}", configured_color):
         doc.close()
         raise ValueError("自訂刀模顏色請使用 #RRGGBB 格式。")
 
+    # 逐頁分析 PDF
     for page_index, page in enumerate(doc):
+
         # 產生 PDF 頁面預覽圖
         pix = page.get_pixmap(
             matrix=fitz.Matrix(2, 2),
@@ -149,32 +159,303 @@ def analyze_pdf_dielines(
             "width": pix.width,
             "height": pix.height
         })
+
+        page_rect = page.rect
+        drawings = page.get_drawings()
+
+        page_shapes = []
+
+        # 取得文字區域，排除文字外框
+        text_data = page.get_text("dict")
+
+        text_boxes = [
+            block["bbox"]
+            for block in text_data.get("blocks", [])
+            if block.get("type") == 0
+        ]
+
+        # 擷取 PDF 向量路徑
+        for drawing_index, drawing in enumerate(drawings):
+
+            if len(page_shapes) >= 1500:
+                doc.close()
+                raise ValueError(
+                    "單頁向量路徑超過 1,500 條，"
+                    "為避免分析時間過長，請先簡化 PDF 或分頁檢查。"
+                )
+
+            pts = _drawing_points(drawing)
+
+            if len(pts) < 2:
+                continue
+
+            total_paths += 1
+
+            line = LineString(pts)
+
+            if line.length <= 0:
+                continue
+
+            x0, y0, x1, y1 = line.bounds
+
+            is_text_path = any(
+                x0 >= box[0] - 1
+                and y0 >= box[1] - 1
+                and x1 <= box[2] + 1
+                and y1 <= box[3] + 1
+                for box in text_boxes
+            )
+
+            if is_text_path:
+                continue
+
+            closed = (
+                bool(drawing.get("closePath"))
+                or _distance(pts[0], pts[-1]) <= 0.75
+            )
+
+            layer = drawing.get("layer")
+            color_hex = _rgb_hex(drawing.get("color"))
+            layer_text = str(layer or "")
+
+            name_match = bool(CUT_NAME_RE.search(layer_text))
+
+            color_match = bool(
+                configured_color
+                and color_hex
+                and color_hex.upper() == configured_color
+            )
+
+            classification = (
+                "confirmed"
+                if (name_match or color_match)
+                else "suspected"
+            )
+
+            polygon = None
+
+            if closed and len(pts) >= 4:
+                try:
+                    polygon = Polygon(pts)
+                except Exception:
+                    polygon = None
+
+            bounds = [
+                round(v * pt_to_mm, 2)
+                for v in line.bounds
+            ]
+
+            lengths = [
+                _distance(pts[i], pts[i + 1]) * pt_to_mm
+                for i in range(len(pts) - 1)
+            ]
+
+            shape = {
+                "page": page_index + 1,
+                "path_index": drawing_index + 1,
+                "layer": layer_text or None,
+                "color": color_hex,
+                "classification": classification,
+                "closed": closed,
+                "geometry_type": "closed" if closed else "open",
+                "length_mm": round(line.length * pt_to_mm, 2),
+                "bounds_mm": bounds,
+                "min_segment_mm": round(min(lengths), 3) if lengths else None,
+                "_geom": line,
+                "_line": line,
+                "_polygon": polygon,
+                "_lengths": lengths,
+            }
+
+            page_shapes.append(shape)
+            all_shapes.append(shape)
+
+        # 初始化本頁異常資料
+        issues = []
+        issue_markers = []
+
+        # 只選取完整封閉的候選外框
+        closed_shapes = [
+            shape for shape in page_shapes
+            if shape["closed"]
+            and shape["_polygon"] is not None
+            and shape["_polygon"].is_valid
+            and shape["_polygon"].area > 0
+        ]
+
+        # 計算封閉外框面積（平方毫米）
+        for shape in closed_shapes:
+            shape["_area_mm2"] = (
+                shape["_polygon"].area * (pt_to_mm ** 2)
+            )
+
+        # 排除面積明顯過小的封閉圖形
+        if closed_shapes:
+
+            max_area = max(
+                shape["_area_mm2"]
+                for shape in closed_shapes
+            )
+
+            analysis_shapes = [
+                shape for shape in closed_shapes
+                if shape["_area_mm2"] >= max_area * 0.10
+            ]
+
+        else:
+            analysis_shapes = []
+
+        total_candidate_dielines += len(analysis_shapes)
+
+        # 比較不同產品外框之間的間距
+        for i in range(len(analysis_shapes)):
+
+            for j in range(i + 1, len(analysis_shapes)):
+
+                a = analysis_shapes[i]
+                b = analysis_shapes[j]
+
+                line_a = a["_line"]
+                line_b = b["_line"]
+
+                dist_mm = line_a.distance(line_b) * pt_to_mm
+
+                # 排除互相重疊或接觸的外框
+                polygon_a = a["_polygon"]
+                polygon_b = b["_polygon"]
+
+                if polygon_a.intersects(polygon_b):
+                    continue
+
+                issue_code = None
+                severity = None
+                message = None
+
+                if line_a.equals(line_b):
+
+                    issue_code = "duplicate_path"
+                    severity = "warning"
+
+                    message = (
+                        f"路徑 {a['path_index']} 與 "
+                        f"{b['path_index']} 完全重複。"
+                    )
+
+                elif line_a.intersects(line_b) or dist_mm <= 0.01:
+
+                    issue_code = "overlap"
+                    severity = "warning"
+
+                    message = (
+                        f"路徑 {a['path_index']} 與 "
+                        f"{b['path_index']} 相交，"
+                        "請人工確認是否為正常刀模交會。"
+                    )
+
+                elif dist_mm < min_gap_mm:
+
+                    issue_code = "small_gap"
+                    severity = "warning"
+
+                    message = (
+                        f"路徑 {a['path_index']} 與 "
+                        f"{b['path_index']} 間距約 "
+                        f"{dist_mm:.2f} mm，"
+                        f"小於 {min_gap_mm:g} mm。"
+                    )
+
+                if issue_code:
+
+                    issues.append({
+                        "code": issue_code,
+                        "severity": severity,
+                        "page": page_index + 1,
+                        "path": a["path_index"],
+                        "other_path": b["path_index"],
+                        "message": message
+                    })
+
+                    # 計算兩條刀模線的最近點
+                    point_a, point_b = nearest_points(
+                        line_a,
+                        line_b
+                    )
+
+                    marker_x = (point_a.x + point_b.x) / 2
+                    marker_y = (point_a.y + point_b.y) / 2
+
+                    # 換算成預覽圖片像素座標
+                    issue_markers.append({
+                        "path": a["path_index"],
+                        "other_path": b["path_index"],
+                        "x": (
+                            (marker_x - page_rect.x0)
+                            * pix.width / page_rect.width
+                        ),
+                        "y": (
+                            (marker_y - page_rect.y0)
+                            * pix.height / page_rect.height
+                        ),
+                    })
+
+        # 儲存本頁檢查結果
+        page_results.append({
+            "page": page_index + 1,
+            "width_mm": round(page_rect.width * pt_to_mm, 2),
+            "height_mm": round(page_rect.height * pt_to_mm, 2),
+            "vector_path_count": len(page_shapes),
+            "candidate_dieline_count": len(analysis_shapes),
+            "issues": issues,
+            "issue_markers": issue_markers,
+        })
+
         findings.extend(issues)
 
+    # 沒有向量路徑時提示
     if total_paths == 0:
+
         findings.append({
             "code": "no_vector_paths",
             "severity": "warning",
             "page": 1,
-            "message": "PDF 中未擷取到可分析的向量路徑；若刀模是點陣圖片或已點陣化，無法用此功能辨識。",
+            "message": (
+                "PDF 中未擷取到可分析的向量路徑；"
+                "若刀模是點陣圖片或已點陣化，"
+                "無法用此功能辨識。"
+            ),
         })
 
+    # 目前無法僅依幾何條件確認刀模
     confirmed = 0
-    suspected = sum(
-        page["vector_path_count"]
-        for page in page_results
-    )
+    suspected = total_candidate_dielines
+
+    # 清除內部計算資料
     for shape in all_shapes:
         shape.pop("_geom", None)
         shape.pop("_line", None)
         shape.pop("_polygon", None)
         shape.pop("_area_mm2", None)
         shape.pop("_lengths", None)
+
     doc.close()
 
-    fail_count = sum(1 for f in findings if f["severity"] == "fail")
-    warning_count = sum(1 for f in findings if f["severity"] == "warning")
-    overall = "fail" if fail_count else ("warning" if warning_count or suspected else "pass")
+    # 統計檢查結果
+    fail_count = sum(
+        1 for f in findings
+        if f["severity"] == "fail"
+    )
+
+    warning_count = sum(
+        1 for f in findings
+        if f["severity"] == "warning"
+    )
+
+    overall = (
+        "fail"
+        if fail_count
+        else ("warning" if warning_count or suspected else "pass")
+    )
+
     return {
         "filename": filename,
         "format": "PDF",
@@ -182,12 +463,23 @@ def analyze_pdf_dielines(
         "vector_path_count": total_paths,
         "confirmed_dielines": confirmed,
         "suspected_dielines": suspected,
-        "classification_note": "目前依據封閉外框及相對面積篩選疑似刀模；仍可能包含文字外框或裝飾圖形，檢查結果需人工確認。",
-        "settings": {"min_gap_mm": min_gap_mm, "edge_clearance_mm": edge_clearance_mm, "min_segment_mm": min_segment_mm, "cut_color": configured_color},
+        "classification_note": (
+            "目前依據封閉外框及相對面積篩選疑似刀模；"
+            "仍可能包含文字外框或裝飾圖形，檢查結果需人工確認。"
+        ),
+        "settings": {
+            "min_gap_mm": min_gap_mm,
+            "edge_clearance_mm": edge_clearance_mm,
+            "min_segment_mm": min_segment_mm,
+            "cut_color": configured_color
+        },
         "pages": page_results,
         "previews": previews,
         "paths": all_shapes,
         "findings": findings,
-        "summary": {"fail": fail_count, "warning": warning_count},
+        "summary": {
+            "fail": fail_count,
+            "warning": warning_count
+        },
         "overall": overall,
     }
